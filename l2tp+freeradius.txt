@@ -1,0 +1,306 @@
+win 10 L2TP如果出现报错：
+
+1. 单击“开始”，单击“运行”，键入“regedit”，然后单击“确定”
+2. 找到下面的注册表子项，然后单击它：HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Rasman\Parameters
+3. 在“编辑”菜单上，单击“新建”->“DWORD值”
+4. 在“名称”框中，键入“ProhibitIpSec”
+5. 在“数值数据”框中，键入“1”，然后单击“确定”6. 退出注册表编辑器，然后重新启动计算机；
+重点：
+自己发现 “AllowL2TPWeakCrypto”的值是0，因为我也是和楼主一样的提示错误，然后把他的值改成“1”；再重启电脑就好用啦！
+
+L2TP 可能存在问题:一个局域网只能登陆一个人的问题。因为外网地址是一个(好像也是一个账号，多人登录)。
+
+
+https://www.nigesb.com/setup-your-own-vpn-with-pptp.html 这个可能有用。（外网放行端口）
+PPTP：（出现一个问题，一个账号可以登录多次）
+https://www.cnblogs.com/StriveSun/p/7127858.html 这个的配置步骤 （客户端需要手动进行路由更改 ip route replace default dev ）
+http://blog.csdn.net/bnxf00000/article/details/44263853 这个Iptalbes 配置方法参考这个。  
+http://www.nenew.net/pptp-vpn-log-user-time-ip-net-traffic-info.html 这个是LOG设置方法，PPTP配置文件需要注释：logwtmp
+
+归档日志脚本：
+[root@localhost ~]# cat log.sh 
+#!/bin/sh 
+file=/root/pptplog/pptplog`date +%F`.xlsx
+[ -e /root/pptplog ] || mkdir /root/pptplog
+cat /var/log/pptpd-ppp* > "$file"
+echo "The log file is $file"
+[root@localhost ~]# 
+
+centos7客户端需要放行 （或者直接关闭防火墙）
+iptables -I INPUT 1 -p gre -j ACCEPT （这条是关键）
+iptables -I INPUT 1 -p tcp -m tcp --dport 1723 -j ACCEPT
+
+pptpsetup --create test1 --server 10.30.14.237 --username test --password 123456 --encrypt --start
+
+
+ubuntu连接方法：（因为默认没有开启任何防火墙）
+https://www.cnblogs.com/junneyang/p/6141721.html
++
+route del default
+route add default dev pppX
+
+退出方法： http://blog.ihipop.info/2010/11/1832.html
+sudo poff
+查看链接时产生的日志：
+plog
+
+
+如果源有问题，换一个源。
+vim /etc/apt/sources.list
+deb http://mirrors.sohu.com/ubuntu/ trusty main restricted universe multiverse
+deb http://mirrors.sohu.com/ubuntu/ trusty-security main restricted universe multiverse
+deb http://mirrors.sohu.com/ubuntu/ trusty-updates main restricted universe multiverse
+deb http://mirrors.sohu.com/ubuntu/ trusty-proposed main restricted universe multiverse
+deb http://mirrors.sohu.com/ubuntu/ trusty-backports main restricted universe multiverse
+deb-src http://mirrors.sohu.com/ubuntu/ trusty main restricted universe multiverse
+deb-src http://mirrors.sohu.com/ubuntu/ trusty-security main restricted universe multiverse
+deb-src http://mirrors.sohu.com/ubuntu/ trusty-updates main restricted universe multiverse
+deb-src http://mirrors.sohu.com/ubuntu/ trusty-proposed main restricted universe multiverse
+deb-src http://mirrors.sohu.com/ubuntu/ trusty-backports main restricted universe multiverse
+
+apt-get -y update
+
+
+mysql+pptp:
+https://www.cnblogs.com/zlyang/p/6554764.html
+
+
+
+限制仅有一个帐号不能同时登陆  （效果不好）
+
+1）  编辑default文件，注释掉session部分的radutmp
+/etc/raddb/sites-available/default
+/etc/raddb/sites-enabled/default
+
+2）  在dialup.conf中，取消下面的注释：
+/etc/raddb/sql/mysql/dialup.conf
+#simul_count_query= "SELECT COUNT(*) \
+#FROM${acct_table1} \
+#WHEREusername = '%{SQL-User-Name}' \
+#AND acctstoptime IS NULL"
+3）在数据库中添加
+insert into radgroupcheck (groupname, attribute, op, value) values('normal', 'Simultaneous-Use', ':=', '1');
+ 
+所有操作都做完了，可以登录，就是限制一个帐号只同一时间只能一个设备在线无效，各位大侠这是为什么.
+
+https://www.cnblogs.com/zlyang/p/6554764.html （已经搭建好的pptp然后加上下面的配置，完成raiuds认证）
+二、安装Freeradius+MySQL
+测试Freeradius+MySQL （这里有个小问题：radiusd -X 后要开启另一个终端，然后radtest test test localhost 0 testing123 这个测试）
+
+centos 有效：
+关闭连接
+
+注意：启动连接很简单，但停止不能使用ifconfig pp0 down，否则只是禁用了ppp0网卡，后台连接还是存在的。当然，可以杀进程(killall pppd)来断开连接。不过，ppp工具包提供了更好用的脚本。但需要您进行一些额外的工作：
+# cp /usr/share/doc/ppp-2.4.5/scripts/pon /usr/sbin/
+# cp /usr/share/doc/ppp-2.4.5/scripts/poff /usr/sbin/
+# chmod +x /usr/sbin/pon
+# chmod +x /usr/sbin/poff
+然后使用下面的命令启动和关闭连接即可：
+# pon vpn
+# poff vpn
+
+
+centos 7 如果开启防火墙的话，不放行gre那就会提示：cat /var/log/messages
+Dec  6 14:31:20 localhost pptpd[19067]: CTRL: Client 10.30.14.236 control connection started
+Dec  6 14:31:21 localhost pptpd[19067]: CTRL: Starting call (launching pppd, opening GRE)
+Dec  6 14:31:21 localhost pppd[19068]: Warning: can't open options file /root/.ppprc: Permission denied
+Dec  6 14:31:21 localhost pppd[19068]: Plugin /usr/lib64/pppd/2.4.5/radius.so loaded.
+Dec  6 14:31:21 localhost pppd[19068]: RADIUS plugin initialized.
+Dec  6 14:31:21 localhost pppd[19068]: Plugin /usr/lib64/pppd/2.4.5/radattr.so loaded.
+Dec  6 14:31:21 localhost pppd[19068]: RADATTR plugin initialized.
+Dec  6 14:31:21 localhost pppd[19068]: pppd 2.4.5 started by root, uid 0
+Dec  6 14:31:21 localhost pppd[19068]: Using interface ppp1
+Dec  6 14:31:21 localhost pppd[19068]: Connect: ppp1 <--> /dev/pts/1
+Dec  6 14:31:21 localhost pptpd[19067]: GRE: Bad checksum from pppd.
+Dec  6 14:31:21 localhost pptpd[19067]: GRE: read(fd=7,buffer=60a400,len=8260) from network failed: status = -1 error = No route to host
+Dec  6 14:31:21 localhost pptpd[19067]: CTRL: GRE read or PTY write failed (gre,pty)=(7,6)
+Dec  6 14:31:21 localhost pppd[19068]: Modem hangup
+Dec  6 14:31:21 localhost pppd[19068]: Connection terminated.
+Dec  6 14:31:21 localhost pppd[19068]: Exit.
+Dec  6 14:31:21 localhost pptpd[19067]: CTRL: Client 10.30.14.236 control connection finished
+
+
+利用freeradius自带功能实现控制在线时间，以及禁止长时间无效占用资源。（radius3.x）
+首先需要把所有用户划分在一个group内（student）
+Session-Timeout和Idle-Timeout都是以s为单位
+insert into radgroupreply (groupname,attribute,op,value) values("student", "Session-Timeout", ":=", "600");
+insert into radgroupreply (groupname,attribute,op,value) values("student", "Idle-Timeout", ":=", "600");
+
+限制用户登陆的间隔时间，可以用paircompare()函数和users file里面的current time信息，需要先提取数据库中上次登录时间
+在user file中添加控制条件
+if (Current-Time == ""Wk2305-0855,Sa,Su2305-1655") {。。。。。
+
+安装freeradius 3.x
+首先确认centos7上的openssl版本>=1.0.2
+
+#####升级openssl版本
+#####1.	去官网下载最新压缩包，解压
+#####2.	参照INSTALL文件进行安装
+#####3.	默认安装在/usr/local/ssl，需要手动加入环境变量
+#####4. ln -s /usr/local/ssl/include/openssl /usr/include/openssl
+
+1.	在官网下载freeradius 3.x压缩包，解压
+2.	yum install libtalloc-devel -y安装libtalloc 
+3.	根据官方补丁，修改相应文件
+	https://github.com/FreeRADIUS/freeradius-server/commit/2d3f119cd8d9e99028f968db1ee108eb6f05db09#raddb/certs/Makefile
+4.	$ ./configure
+  	$ make
+  	$ make install
+5.	手动加入环境变量 /usr/local/sbin /usr/local/bin
+6.	ln -s /usr/local/include/freeeadius /usr/include/freeradius
+7.	ln -s /usr/local/etc/raddb /usr/etc/raddb
+
+
+#安装freeradius 2.x
+#需要安装的包
+
+mysql-5.1.73-8.el6_8.x86_64
+mysql-server.x86_64 0:5.1.73-8.el6_8 
+mysql-devel.x86_64 0:5.1.73-8.el6_8
+freeradius.x86_64 0:2.2.6-7.el6_9
+freeradius-mysql.x86_64 0:2.2.6-7.el6_9
+freeradius-utils.x86_64 0:2.2.6-7.el6_9
+freeradius-client-1.1.7
+
+测试：
+#修改/etc/raddb下的文件users,加入：
+test    Cleartext-Password := "password"
+        Reply-Message = "hello!"
+#退出后输入命令：
+radiusd -X
+# 进入debug日志输出模式
+# 如果有出现
+Listening on authentication address * port 1812
+Listening on accounting address * port 1813
+Listening on command file /usr/local/var/run/radiusd/radiusd.sock
+Listening on proxy address * port 1814
+Ready to process requests.
+# 这些字样说明正常启动成功了
+#若出现Failed binding to authentication address * port 1812: Address already in use
+#输入命令
+service radiusd stop
+#或者输入命令
+lsof -i:1812
+#kill占用的进程
+ 
+# 重新打开一个窗口，执行下面这条命令
+radtest test password localhost 1812 testing123 
+# 用户名test密码password , 连接密钥testing123
+# 出现 rad_recv: Access-Accept packet Reply-Message = "hello!"字样说明验证成功
+
+#打开mysql服务
+service mysqld start
+chkconfig mysqld on
+#密码为空
+mysqladmin -u root -p create radius
+mysql -u root -p radius < /etc/raddb/sql/mysql/schema.sql
+mysql -u root -p radius < /etc/raddb/sql/mysql/nas.sql
+mysql -u root -p radius < /etc/raddb/sql/mysql/ippool.sql
+mysql -u root -p radius < /etc/raddb/sql/mysql/wimax.sql
+mysql -u root -p
+mysql> GRANT SELECT ON radius.* TO 'radius'@'localhost' IDENTIFIED BY 'radpass';
+mysql> GRANT ALL on radius.radacct TO 'radius'@'localhost';
+mysql> GRANT ALL on radius.radpostauth TO 'radius'@'localhost';
+mysql> use radius;
+ 
+# 加入用户信息
+mysql> INSERT INTO radcheck (UserName, Attribute, Value) VALUES ('sqltest', 'Cleartext-Password', '123456');
+ 
+# 用户加到组里
+mysql> insert into radusergroup(username,groupname) values('sqltest','user');
+ 
+# 限制账户同时登陆次数
+mysql> INSERT INTO radgroupcheck (GroupName, Attribute, op, Value) values("user", "Simultaneous-Use", ":=", "1");
+
+#配置freeradius使用mysql
+vi /etc/raddb/radiusd.conf
+# 查找$INCLUDE sql.conf，去掉#号
+ 
+vi /etc/raddb/sites-enabled/default
+# 找到authorize {}模块，注释掉files，反注释sql
+# 找到accounting {}模块，注释掉radutmp，反注释sql
+# 找到session {}模块，注释掉radutmp，反注释sql
+# 找到post-auth {}模块，去掉sql前的#号，反注释sql
+ 
+vi /etc/raddb/sites-enabled/inner-tunnel
+# 找到authorize {}模块，注释掉files，反注释sql
+# 找到session {}模块，注释掉radutmp，反注释sql
+# 找到post-auth {}模块，去掉sql前的#号,反注释sql
+
+#在文件/etc/raddb/sql/mysql/dialup.conf中查找simul_count_query
+# Uncomment simul_count_query to enable simultaneous 
+use checking simul_count_query = "SELECT COUNT(*) \
+                             FROM ${acct_table1} \
+                             WHERE username = '%{SQL-User-Name}' \
+                             AND acctstoptime IS NULL" 
+
+测试：radtest sqltest 123456 localhost 1812 testing123
+
+安装freeradius-client
+wget ftp://ftp.freeradius.org/pub/freeradius/freeradius-client-1.1.6.tar.gz
+tar zxvf freeradius-client-1.1.6.tar.gz
+cd freeradius-client-1.1.6
+./configure && make && make install
+#修改client配置
+vi /usr/local/etc/radiusclient/radiusclient.conf
+#修改后authserver acctserver 如下
+authserver 10.30.14.101:1812
+acctserver 10.30.14.101:1813
+#radius_deadtime 0 和 bindaddr * 将这两项注释掉
+
+#配置FreeRADIUS Server地址，修改/usr/local/etc/radiusclient/servers，增加：
+localhost   testing123
+
+#pptp启用freeradius插件
+#修改/etc/ppp/options.pptpd，在最后面加上
+plugin radius.so
+plugin radattr.so
+radius-config-file /etc/local/etc/radiusclient/radiusclient.conf
+
+#配置字典
+#从ftp://ftp.freeradius.org/pub/freeradius/old/下载对应的freeradius-server-2.2.6.tar.gz
+#解压后在share文件夹下找到dictionary.microsoft，移动到radiusclient文件夹下
+cat >>/usr/local/etc/radiusclient/dictionary<<EOF
+INCLUDE /usr/local/etc/radiusclient/dictionary.sip
+INCLUDE /usr/local/etc/radiusclient/dictionary.ascend
+INCLUDE /usr/local/etc/radiusclient/dictionary.merit
+INCLUDE /usr/local/etc/radiusclient/dictionary.compat
+INCLUDE /usr/local/etc/radiusclient/dictionary.microsoft
+EOF
+
+#重新启动pptpd
+service pptpd restart
+chkconfig pptpd on
+
+参考：
+http://www.m-mu.com/topics/ubuntu下pptp用freeradius流量控制.html
+http://blog.csdn.net/alonesword/article/details/19506217
+https://lintut.com/setup-pptp-to-authenticate-off-freeradius-on-centos-6-and-ubuntu-11-10/
+
+#命令行删除某个用户登陆信息：
+radzap -d /etc/raddb -h -U username localhost secret
+#radwho可以查看在线的用戶
+#secret: The shared secret for this client 保存在client.conf文件中，需要我们同时启用sql和radutmp
+
+#如果我们仅仅启用sql
+#use radclient to create a fake "stop" packet, and send that to the server.
+#执行脚本向1813端口发送UDP包 accounting-request(User Request)，等待server发送accounting-response(是Host Request 吗?)
+#	Either NAS-IP-Address or NAS-Identifier MUST be present in a
+      	RADIUS Accounting-Request.  It SHOULD contain a NAS-Port or NAS-
+      	Port-Type attribute or both unless the service does not involve a
+      	port or the NAS does not distinguish among its ports.
+	 Code field set to 4 (Accounting-Request).
+	Code + Identifier + Length + 16 zero octets + request attributes + shared secret (where + indicates concatenation)
+
+
+#参考文献：
+#https://tools.ietf.org/html/rfc2866
+#http://www.stat.ufl.edu/system/man/portmaster/RADIUS/guide/7account.html
+#http://freeradius.1045715.n5.nabble.com/simultaneous-use-and-stateless-sessions-in-sql-td2747527.html
+#http://blog.csdn.net/liang13664759/article/details/1574367
+#查询数据库
+#http://blog.csdn.net/u014453898/article/details/54696375
+#md5加密
+#http://blog.csdn.net/zsy19881226/article/details/46879887
+
+
